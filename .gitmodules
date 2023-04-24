@@ -1,0 +1,3 @@
+[submodule "portable-color"]
+	path = portable-color
+	url = git@github.com:mattieb/portable-color.git

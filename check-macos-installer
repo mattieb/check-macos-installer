@@ -1,0 +1,87 @@
+#!/bin/sh
+#
+# Copyright (c) 2023 Mattie Behrens.
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+
+source portable-color/portable-color.sh
+
+installer="$1"
+
+if [ -z "${installer}" ]
+then
+    echo $(bold $(red usage:)) $0 INSTALLER
+    exit 1
+fi
+
+echo_task() {
+    echo $(green ==\>) $(bold $@)
+}
+
+echo_subtask () {
+    echo $(blue ==\>) $(bold $@)
+}
+
+echo_result() {
+    echo $@
+    "$@"
+    if [ $? = 0 ]
+    then
+        echo $(bold $(green ==\> ✅ Passed))
+    else
+        echo $(bold $(red ==\> ⛔️ Failed with exit code $?))
+    fi
+}
+
+echo_task Inspecting $(green ${installer})
+
+set +e
+echo_subtask Assessing with security assessment policy tool: $(blue ${installer})
+echo_result spctl --assess -vv "${installer}"
+echo_subtask Checking code signature: $(blue ${installer})
+echo_result codesign -dvv "${installer}"
+
+imagefile="${installer}/Contents/SharedSupport/InstallESD.dmg"
+
+echo_task Evaluating packages in $(green "${imagefile}")
+
+set -e
+tempdir="$(mktemp -d)"
+echo_subtask Attaching
+hdiutil attach -readonly -noautoopen -mountpoint "${tempdir}" "${imagefile}"
+
+__cleanup() {
+    set -e
+    echo_task Cleaning up
+    diskutil unmount "${tempdir}"
+    rmdir "${tempdir}"
+}
+trap __cleanup EXIT
+
+find "${tempdir}" -name \*.pkg | (
+    while read pkgfile
+    do
+        set +e
+        echo_subtask Assessing with security assessment policy tool: $(blue ${pkgfile})
+        echo_result spctl --assess -t install -vv "${pkgfile}"
+        echo_subtask Checking package signature: $(blue ${pkgfile})
+        echo_result pkgutil --check-signature "${pkgfile}"
+    done
+)
