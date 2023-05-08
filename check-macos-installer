@@ -21,7 +21,7 @@
 # SOFTWARE.
 #
 
-source portable-color/portable-color.sh
+. portable-color.sh || exit 1
 
 installer="$1"
 
